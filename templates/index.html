@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-EVSTQN3/azprG1Anm3QDgpJLIm9Nao0Yz1ztcQTwFspd3yD65VohhpuuCOmLASjC" crossorigin="anonymous">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Голосовое приложение</title>
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+        }
+
+        #recordingButton {
+            margin-bottom: 20px;
+        }
+
+        #result, #emotion {
+            text-align: center;
+            margin-top: 20px;
+            font-size: 18px;
+        }
+    </style>
+    <script src="https://code.jquery.com/jquery-3.6.4.min.js"></script>
+</head>
+<body>
+<h1>Голосовое приложение</h1>
+<button id="recordingButton" class="btn btn-primary">Начать запись</button>
+<p id="status"></p>
+
+<audio controls id="audioPlayer" style="margin-top: 20px;">
+    <source src="" type="audio/mpeg" id="audioSource">
+    Ваш браузер не поддерживает тег аудио.
+</audio>
+
+<p id="result" class="text-success"></p>
+<p id="emotion" class="text-success"></p>
+<p id="lang" class="text-info"></p>
+<script>
+    let mediaRecorder;
+    let audioChunks = [];
+    let isRecording = false;
+
+    // Обновлено: добавлено определение переменной emotionParagraph
+    const recordingButton = document.getElementById('recordingButton');
+    const statusParagraph = document.getElementById('status');
+    const resultParagraph = document.getElementById('result');
+    const emotionParagraph = document.getElementById('emotion');
+    const langParagraph = document.getElementById('lang');
+    const audioPlayer = document.getElementById('audioPlayer');
+    const audioSource = document.getElementById('audioSource');
+
+    recordingButton.addEventListener('click', toggleRecording);
+
+    async function toggleRecording() {
+        if (!isRecording) {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                mediaRecorder = new MediaRecorder(stream);
+
+                mediaRecorder.ondataavailable = event => {
+                    if (event.data.size > 0) {
+                        audioChunks.push(event.data);
+                    }
+                };
+
+                mediaRecorder.onstop = async () => {
+                    console.log(audioChunks)
+                    const audioBlob = new Blob(audioChunks, { type: 'audio/mpeg' });
+                    const audioFile = new File([audioBlob], 'recorded_audio.mp3', { type: 'audio/mpeg' });
+                    const formData = new FormData();
+                    formData.append('file', audioFile);
+
+                    try {
+                        const response = await fetch('/upload', {
+                            method: 'POST',
+                            body: formData
+                        });
+
+                        const data = await response.json();
+
+                        if (data.error) {
+                            console.error('Error from server:', data.error);
+                            resultParagraph.innerHTML = 'Error: ' + data.error;
+                        } else {
+                            console.log('Data from server:', data);
+                            langParagraph.innerHTML = 'Язык: ' + data.lang;
+                            resultParagraph.innerHTML = 'Распознанный текст: ' + data.text;
+                            // Обновлено: добавлено отображение эмоции
+                            emotionParagraph.innerHTML = 'Эмоция: ' + data.emotion;
+                        }
+                    } catch (error) {
+                        console.error('Error sending data to server:', error);
+                    }
+
+                    audioSource.src = URL.createObjectURL(audioBlob);
+                    audioPlayer.load();
+                    audioPlayer.play();
+
+                    audioChunks = [];
+                };
+
+                mediaRecorder.start();
+                isRecording = true;
+                statusParagraph.textContent = 'Говорите...';
+                recordingButton.textContent = 'Остановить запись';
+            } catch (error) {
+                console.error('Error starting recording:', error);
+            }
+        } else {
+            if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+                mediaRecorder.stop();
+                isRecording = false;
+                statusParagraph.textContent = 'Запись остановлена';
+                recordingButton.textContent = 'Начать запись';
+            }
+        }
+    }
+
+</script>
+
+</body>
+</html>
